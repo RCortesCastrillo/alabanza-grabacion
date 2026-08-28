@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && cd dist && touch .nojekyll && git init -q -b gh-pages && git add -A && git commit -q -m deploy && git push -f https://github.com/RCortesCastrillo/alabanza-grabacion.git gh-pages && cd .. && rm -rf dist/.git"
+    "deploy": "npm run build && rm -rf dist/.git && cd dist && touch .nojekyll && git init -q -b gh-pages && git add -A && git commit -q -m deploy && git push -f https://github.com/RCortesCastrillo/alabanza-grabacion.git gh-pages; cd .. && rm -rf dist/.git"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
