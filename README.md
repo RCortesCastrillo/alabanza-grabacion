@@ -33,7 +33,7 @@ Después de desplegar, abre el link en el celular y verifica que el ícono de "i
 
 ## Instrucciones de instalación para compartir por WhatsApp
 
-> Abre este link en tu celular: **[PEGAR LINK AQUÍ]**
+> Abre este link en tu celular: **https://rcortescastrillo.github.io/alabanza-grabacion/**
 >
 > **Android:** ábrelo en Chrome → menú de tres puntos (arriba a la derecha) → "Agregar a pantalla de inicio" → "Instalar".
 >
