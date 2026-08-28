@@ -31,6 +31,11 @@ function toWav(buffer) {
     const d = buffer.getChannelData(c);
     for (let i = 0; i < n; i++) mono[i] += d[i] / ch;
   }
+  // Normalizar para escuchar: pico a -1 dBFS. La grabación cruda queda igual.
+  let pk = 0;
+  for (let i = 0; i < n; i++) { const a = Math.abs(mono[i]); if (a > pk) pk = a; }
+  const gain = pk > 0 ? Math.min(0.891 / pk, 40) : 1;
+  if (gain !== 1) for (let i = 0; i < n; i++) mono[i] *= gain;
   const out = new ArrayBuffer(44 + n * 2);
   const v = new DataView(out);
   const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };

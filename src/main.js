@@ -20,7 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const VERSION = '1.3';
+const VERSION = '1.4';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------

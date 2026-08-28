@@ -6,7 +6,7 @@ const WIN_MS = 20;
 const SILENCE_DB = -45;
 const PAD_MS = 80;
 const XFADE_MS = 15;
-const TARGET_RMS_DB = -18;
+const TARGET_RMS_DB = -14;
 const PEAK_LIMIT = Math.pow(10, -1 / 20); // -1 dBFS
 
 const post = (type, data) => self.postMessage({ type, ...data });
