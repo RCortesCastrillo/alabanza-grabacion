@@ -72,7 +72,12 @@ export function mountPlayer(container, blob, { autoplay = false } = {}) {
     if (!buffer) {
       btn.disabled = true; time.textContent = 'Cargando…';
       try { buffer = await decode(blob); }
-      catch { time.textContent = 'No se pudo reproducir esta toma.'; return; }
+      catch (err) {
+        console.warn('[reproductor] decode falló, usando <audio>', err);
+        btn.disabled = false;
+        fallbackToNative();
+        return;
+      }
       finally { btn.disabled = false; }
       if (dead) return;
     }
@@ -100,6 +105,22 @@ export function mountPlayer(container, blob, { autoplay = false } = {}) {
     offset = frac * buffer.duration;
     if (was) play(); else draw();
   };
+
+  // Plan B: <audio> nativo con el truco para que calcule la duración de blobs sin cabecera.
+  function fallbackToNative() {
+    const url = URL.createObjectURL(blob);
+    container.innerHTML = `<audio controls preload="auto" src="${url}" style="width:100%"></audio>`;
+    const a = container.querySelector('audio');
+    a.addEventListener('loadedmetadata', () => {
+      if (a.duration === Infinity) {
+        a.currentTime = 1e101;
+        a.addEventListener('timeupdate', function once() { a.removeEventListener('timeupdate', once); a.currentTime = 0; });
+      }
+    });
+    a.play().catch(() => {});
+    api.pause = () => a.pause();
+    api.destroy = () => { a.pause(); URL.revokeObjectURL(url); };
+  }
 
   const api = {
     pause,

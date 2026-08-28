@@ -20,6 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
+const VERSION = '1.2';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------
@@ -110,7 +111,7 @@ function renderHome() {
   app.innerHTML = `
     <header class="top">
       <h1>Alabanza</h1>
-      <div class="sub">${esc(fechaBonita(s.date))}${s.name ? ' · ' + esc(s.name) : ''}</div>
+      <div class="sub">${esc(fechaBonita(s.date))}${s.name ? ' · ' + esc(s.name) : ''} <span class="ver">v${VERSION}</span></div>
       <button class="icon-btn" data-go="settings" aria-label="Ajustes">${I.gear}</button>
     </header>
 
@@ -396,6 +397,7 @@ function renderSettings() {
       </div>
       <p class="muted">El archivo se llamará: <strong>${esc(fileName())}</strong></p>
 
+      <p class="muted">Versión ${VERSION}</p>
       <div class="danger-zone">
         <button class="btn danger block" id="newSunday">Empezar domingo nuevo</button>
         <p class="muted">Borra todas las tomas grabadas. Tu nombre se conserva.</p>
