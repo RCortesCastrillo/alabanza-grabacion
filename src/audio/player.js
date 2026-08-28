@@ -5,6 +5,8 @@
 // se silencia con el interruptor lateral del iPhone. Solución: decodificar la toma,
 // escribirla como WAV (cabecera completa) y dársela al <audio> del sistema.
 
+import { applyTone } from './tone.js';
+
 const fmt = s => {
   s = Math.max(0, Math.round(s || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -31,6 +33,7 @@ function toWav(buffer) {
     const d = buffer.getChannelData(c);
     for (let i = 0; i < n; i++) mono[i] += d[i] / ch;
   }
+  applyTone(mono, sr);
   // Normalizar para escuchar: pico a -1 dBFS. La grabación cruda queda igual.
   let pk = 0;
   for (let i = 0; i < n; i++) { const a = Math.abs(mono[i]); if (a > pk) pk = a; }

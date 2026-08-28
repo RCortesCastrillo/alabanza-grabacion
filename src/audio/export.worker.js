@@ -1,5 +1,6 @@
 // Worker de exportación: recorte de silencios, emparejar volumen, concatenar con fundidos, MP3.
 import { Mp3Encoder } from '@breezystack/lamejs';
+import { applyTone } from './tone.js';
 
 const SR = 44100;
 const WIN_MS = 20;
@@ -26,7 +27,7 @@ function process(takes, bitrate) {
   // 1. Recortar aire en las orillas.
   post('progress', { step: 'trim', pct: 0 });
   const trimmed = takes.map((t, i) => {
-    const out = trimEdges(t.samples);
+    const out = trimEdges(applyTone(t.samples, SR));
     post('progress', { step: 'trim', pct: (i + 1) / n });
     return out;
   });

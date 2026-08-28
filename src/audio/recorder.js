@@ -74,7 +74,7 @@ export class Recorder {
 
     const mime = pickMimeType();
     this.mime = mime;
-    this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime, audioBitsPerSecond: 128000 } : undefined);
+    this.recorder = new MediaRecorder(this.stream, mime ? { mimeType: mime, audioBitsPerSecond: 192000 } : undefined);
     this.chunks = [];
     this.recorder.ondataavailable = e => { if (e.data && e.data.size) this.chunks.push(e.data); };
     this.recorder.onerror = () => this.stop(true);
