@@ -1,4 +1,6 @@
-// Worker de exportación: recorte de silencios, emparejar volumen, concatenar con fundidos, MP3.
+// Worker de exportación, en modo "flujo": recibe una toma a la vez, la procesa
+// (tono, recorte de aire, volumen, fundidos) y la codifica a MP3 de inmediato.
+// Así nunca hay más de una toma descomprimida en memoria, aunque sean 30 minutos.
 import { Mp3Encoder } from '@breezystack/lamejs';
 import { applyTone } from './tone.js';
 
@@ -16,46 +18,59 @@ const PEAK_LIMIT = Math.pow(10, -1 / 20); // -1 dBFS
 
 const post = (type, data) => self.postMessage({ type, ...data });
 
+let enc = null, chunks = [], total = 0, done = 0, index = 0;
+const BLOCK = 1152 * 20;
+const int16 = new Int16Array(BLOCK);
+
 self.onmessage = e => {
-  const { takes, bitrate } = e.data;
+  const m = e.data;
   try {
-    const mp3 = process(takes, bitrate || 128);
-    post('done', { blob: mp3 });
+    if (m.type === 'start') {
+      enc = new Mp3Encoder(1, SR, m.bitrate || 128);
+      chunks = []; total = m.count; done = 0; index = 0;
+    } else if (m.type === 'take') {
+      processTake(m.samples);
+      done++;
+      post('takeDone', { index: done });
+    } else if (m.type === 'finish') {
+      const tail = enc.flush();
+      if (tail.length) chunks.push(new Uint8Array(tail));
+      post('done', { blob: new Blob(chunks, { type: 'audio/mpeg' }) });
+      chunks = []; enc = null;
+    }
   } catch (err) {
     post('error', { message: err?.message || String(err) });
   }
 };
 
-function process(takes, bitrate) {
-  const n = takes.length;
-  // 1. Recortar aire en las orillas.
-  post('progress', { step: 'trim', pct: 0 });
-  const trimmed = takes.map((t, i) => {
-    const out = trimEdges(applyTone(t.samples, SR));
-    post('progress', { step: 'trim', pct: (i + 1) / n });
-    return out;
-  });
+function processTake(samples) {
+  const base = done / total, span = 1 / total;
+  const prog = (step, pct) => post('progress', { step, pct: base + span * pct });
 
-  // 2. Emparejar volumen.
-  post('progress', { step: 'level', pct: 0 });
-  const targetRms = Math.pow(10, TARGET_RMS_DB / 20);
-  trimmed.forEach((s, i) => {
-    const r = rms(s);
-    let gain = r > 0 ? targetRms / r : 1;
-    const pk = peak(s);
-    if (pk * gain > PEAK_LIMIT) gain = PEAK_LIMIT / pk;
-    if (Math.abs(gain - 1) > 1e-3) for (let k = 0; k < s.length; k++) s[k] *= gain;
-    post('progress', { step: 'level', pct: (i + 1) / n });
-  });
+  prog('trim', 0);
+  applyTone(samples, SR);
+  const s = trimEdges(samples); // vista sobre el mismo buffer, sin copiar
+  prog('trim', 1);
 
-  // 3. Concatenar con pausa y fundidos suaves.
-  post('progress', { step: 'join', pct: 0 });
-  const joined = concatWithGaps(trimmed);
-  post('progress', { step: 'join', pct: 1 });
+  prog('level', 0);
+  const r = rms(s);
+  let gain = r > 0 ? Math.pow(10, TARGET_RMS_DB / 20) / r : 1;
+  const pk = peak(s);
+  if (pk * gain > PEAK_LIMIT) gain = PEAK_LIMIT / pk;
+  if (Math.abs(gain - 1) > 1e-3) for (let k = 0; k < s.length; k++) s[k] *= gain;
+  prog('level', 1);
 
-  // 4. MP3.
-  post('progress', { step: 'encode', pct: 0 });
-  return encodeMp3(joined, bitrate);
+  prog('join', 0);
+  const n = s.length;
+  const fIn = Math.min(Math.round(SR * FADE_IN_MS / 1000), n);
+  const fOut = Math.min(Math.round(SR * FADE_OUT_MS / 1000), n);
+  for (let k = 0; k < fIn; k++) s[k] *= k / fIn;
+  for (let k = 0; k < fOut; k++) s[n - 1 - k] *= k / fOut;
+  if (index > 0) encodeSilence(Math.round(SR * GAP_MS / 1000));
+  index++;
+  prog('join', 1);
+
+  encode(s, pct => prog('encode', pct));
 }
 
 function rms(s) {
@@ -74,7 +89,7 @@ function trimEdges(s) {
   const padStart = Math.round(SR * PAD_START_MS / 1000);
   const padEnd = Math.round(SR * PAD_END_MS / 1000);
   const pk = peak(s);
-  if (pk <= 0) return s.slice(0, Math.min(s.length, padStart));
+  if (pk <= 0) return s.subarray(0, Math.min(s.length, padStart));
   const thrDb = Math.min(20 * Math.log10(pk) - SILENCE_BELOW_PEAK_DB, SILENCE_FLOOR_DB);
   const thr = Math.pow(10, thrDb / 20);
   const nWin = Math.floor(s.length / win);
@@ -85,49 +100,31 @@ function trimEdges(s) {
     for (let i = 0; i < win; i++) sum += s[off + i] * s[off + i];
     if (Math.sqrt(sum / win) > thr) { if (first < 0) first = w; last = w; }
   }
-  if (first < 0) return s.slice(0, Math.min(s.length, padStart));
+  if (first < 0) return s.subarray(0, Math.min(s.length, padStart));
   const start = Math.max(0, first * win - padStart);
   const end = Math.min(s.length, (last + 1) * win + padEnd);
-  return s.slice(start, end);
+  return s.subarray(start, end);
 }
 
-function concatWithGaps(parts) {
-  const gap = Math.round(SR * GAP_MS / 1000);
-  const fo = Math.round(SR * FADE_OUT_MS / 1000);
-  const fi = Math.round(SR * FADE_IN_MS / 1000);
-  let total = 0;
-  parts.forEach((p, i) => { total += p.length + (i > 0 ? gap : 0); });
-  const out = new Float32Array(total);
-  let pos = 0;
-  parts.forEach((p, i) => {
-    if (i > 0) pos += gap; // silencio entre secciones
-    const n = p.length;
-    const fIn = Math.min(fi, n), fOut = Math.min(fo, n);
-    for (let k = 0; k < fIn; k++) p[k] *= k / fIn;
-    for (let k = 0; k < fOut; k++) p[n - 1 - k] *= k / fOut;
-    out.set(p, pos);
-    pos += n;
-  });
-  return out;
+function encodeSilence(count) {
+  int16.fill(0);
+  for (let i = 0; i < count; i += BLOCK) {
+    const len = Math.min(BLOCK, count - i);
+    const buf = enc.encodeBuffer(len === BLOCK ? int16 : int16.subarray(0, len));
+    if (buf.length) chunks.push(new Uint8Array(buf));
+  }
 }
 
-function encodeMp3(samples, kbps) {
-  const enc = new Mp3Encoder(1, SR, kbps);
-  const block = 1152 * 20;
-  const chunks = [];
-  const int16 = new Int16Array(block);
-  for (let i = 0; i < samples.length; i += block) {
-    const len = Math.min(block, samples.length - i);
+function encode(samples, onPct) {
+  for (let i = 0; i < samples.length; i += BLOCK) {
+    const len = Math.min(BLOCK, samples.length - i);
     for (let k = 0; k < len; k++) {
       const v = Math.max(-1, Math.min(1, samples[i + k]));
       int16[k] = v < 0 ? v * 0x8000 : v * 0x7fff;
     }
-    const buf = enc.encodeBuffer(len === block ? int16 : int16.subarray(0, len));
+    const buf = enc.encodeBuffer(len === BLOCK ? int16 : int16.subarray(0, len));
     if (buf.length) chunks.push(new Uint8Array(buf));
-    if ((i / block) % 8 === 0) post('progress', { step: 'encode', pct: i / samples.length });
+    if ((i / BLOCK) % 8 === 0) onPct(i / samples.length);
   }
-  const tail = enc.flush();
-  if (tail.length) chunks.push(new Uint8Array(tail));
-  post('progress', { step: 'encode', pct: 1 });
-  return new Blob(chunks, { type: 'audio/mpeg' });
+  onPct(1);
 }

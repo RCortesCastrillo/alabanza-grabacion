@@ -20,7 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const VERSION = '1.7';
+const VERSION = '1.8';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------
@@ -471,11 +471,10 @@ async function runExport() {
   const songs = songList();
   const items = body.querySelectorAll('[data-step]');
   const onProgress = ({ step, pct }) => {
-    const idx = STEPS.findIndex(s => s[0] === step);
-    items.forEach((li, i) => { li.classList.toggle('done', i < idx); li.classList.toggle('on', i === idx); });
-    const overall = (idx + pct) / STEPS.length;
+    // El worker trabaja toma por toma; pct ya es el avance global.
+    items.forEach(li => { li.classList.toggle('on', li.dataset.step === step); li.classList.remove('done'); });
     const bar = document.getElementById('expBar');
-    if (bar) bar.style.width = `${Math.round(overall * 100)}%`;
+    if (bar) bar.style.width = `${Math.round(pct * 100)}%`;
   };
   try {
     const blob = await exportMp3(songs.map(s => s.take), { bitrate: state.session.bitrate, onProgress });
