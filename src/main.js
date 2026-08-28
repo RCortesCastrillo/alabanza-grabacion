@@ -20,7 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const VERSION = '1.6';
+const VERSION = '1.7';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------
@@ -443,7 +443,7 @@ const STEPS = [
   ['decode', 'Leyendo las tomas'],
   ['trim', 'Quitando el aire de las orillas'],
   ['level', 'Emparejando el volumen'],
-  ['join', 'Uniendo los cantos'],
+  ['join', 'Uniendo las partes con pausas suaves'],
   ['encode', 'Creando el MP3']
 ];
 

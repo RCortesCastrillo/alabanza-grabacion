@@ -4,9 +4,13 @@ import { applyTone } from './tone.js';
 
 const SR = 44100;
 const WIN_MS = 20;
-const SILENCE_DB = -45;
-const PAD_MS = 80;
-const XFADE_MS = 15;
+const SILENCE_BELOW_PEAK_DB = 42; // "silencio" = 42 dB por debajo del pico de la toma (relativo, no fijo)
+const SILENCE_FLOOR_DB = -60;      // y nunca más alto que esto en absoluto
+const PAD_START_MS = 300;          // colchón antes del primer sonido
+const PAD_END_MS = 800;            // colchón después del último (la guitarra sigue sonando)
+const GAP_MS = 2000;               // pausa entre secciones, como en vivo
+const FADE_OUT_MS = 500;
+const FADE_IN_MS = 120;
 const TARGET_RMS_DB = -14;
 const PEAK_LIMIT = Math.pow(10, -1 / 20); // -1 dBFS
 
@@ -44,9 +48,9 @@ function process(takes, bitrate) {
     post('progress', { step: 'level', pct: (i + 1) / n });
   });
 
-  // 3. Concatenar con fundidos traslapados.
+  // 3. Concatenar con pausa y fundidos suaves.
   post('progress', { step: 'join', pct: 0 });
-  const joined = concatWithCrossfade(trimmed);
+  const joined = concatWithGaps(trimmed);
   post('progress', { step: 'join', pct: 1 });
 
   // 4. MP3.
@@ -67,8 +71,12 @@ function peak(s) {
 
 function trimEdges(s) {
   const win = Math.round(SR * WIN_MS / 1000);
-  const thr = Math.pow(10, SILENCE_DB / 20);
-  const pad = Math.round(SR * PAD_MS / 1000);
+  const padStart = Math.round(SR * PAD_START_MS / 1000);
+  const padEnd = Math.round(SR * PAD_END_MS / 1000);
+  const pk = peak(s);
+  if (pk <= 0) return s.slice(0, Math.min(s.length, padStart));
+  const thrDb = Math.min(20 * Math.log10(pk) - SILENCE_BELOW_PEAK_DB, SILENCE_FLOOR_DB);
+  const thr = Math.pow(10, thrDb / 20);
   const nWin = Math.floor(s.length / win);
   let first = -1, last = -1;
   for (let w = 0; w < nWin; w++) {
@@ -77,28 +85,28 @@ function trimEdges(s) {
     for (let i = 0; i < win; i++) sum += s[off + i] * s[off + i];
     if (Math.sqrt(sum / win) > thr) { if (first < 0) first = w; last = w; }
   }
-  if (first < 0) return s.slice(0, Math.min(s.length, pad * 2)); // toma vacía: casi nada
-  const start = Math.max(0, first * win - pad);
-  const end = Math.min(s.length, (last + 1) * win + pad);
+  if (first < 0) return s.slice(0, Math.min(s.length, padStart));
+  const start = Math.max(0, first * win - padStart);
+  const end = Math.min(s.length, (last + 1) * win + padEnd);
   return s.slice(start, end);
 }
 
-function concatWithCrossfade(parts) {
-  const xf = Math.round(SR * XFADE_MS / 1000);
+function concatWithGaps(parts) {
+  const gap = Math.round(SR * GAP_MS / 1000);
+  const fo = Math.round(SR * FADE_OUT_MS / 1000);
+  const fi = Math.round(SR * FADE_IN_MS / 1000);
   let total = 0;
-  parts.forEach((p, i) => { total += p.length - (i > 0 ? Math.min(xf, p.length) : 0); });
-  const out = new Float32Array(Math.max(total, 0));
+  parts.forEach((p, i) => { total += p.length + (i > 0 ? gap : 0); });
+  const out = new Float32Array(total);
   let pos = 0;
   parts.forEach((p, i) => {
-    if (i === 0) { out.set(p, 0); pos = p.length; return; }
-    const f = Math.min(xf, p.length, pos);
-    const start = pos - f;
-    for (let k = 0; k < f; k++) {
-      const t = k / f;
-      out[start + k] = out[start + k] * (1 - t) + p[k] * t;
-    }
-    out.set(p.subarray(f), pos);
-    pos += p.length - f;
+    if (i > 0) pos += gap; // silencio entre secciones
+    const n = p.length;
+    const fIn = Math.min(fi, n), fOut = Math.min(fo, n);
+    for (let k = 0; k < fIn; k++) p[k] *= k / fIn;
+    for (let k = 0; k < fOut; k++) p[n - 1 - k] *= k / fOut;
+    out.set(p, pos);
+    pos += n;
   });
   return out;
 }
