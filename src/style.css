@@ -112,6 +112,7 @@ button:disabled { cursor: default; }
   letter-spacing: 0.02em;
 }
 .section-head .count { color: var(--ink-3); font-size: 16px; font-family: var(--font-body); font-weight: 400; margin-left: 8px; text-transform: none; letter-spacing: 0; }
+.section-hint { margin: -2px 0 10px; color: var(--ink-2); font-size: 15px; }
 .stepper { display: flex; gap: 6px; }
 .stepper button {
   width: 48px; height: 48px;

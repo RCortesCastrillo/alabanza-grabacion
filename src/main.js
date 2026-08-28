@@ -20,7 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const VERSION = '1.5';
+const VERSION = '1.6';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------
@@ -38,7 +38,7 @@ const songList = () => {
   const list = [];
   for (const sec of SECTIONS) {
     for (let n = 1; n <= state.session.counts[sec.id]; n++) {
-      list.push({ sectionId: sec.id, n, label: `${sec.label} ${n}`, take: state.takes[takeKey(sec.id, n)] || null });
+      list.push({ sectionId: sec.id, n, label: sec.single ? sec.label : `${sec.label} ${n}`, take: state.takes[takeKey(sec.id, n)] || null });
     }
   }
   return list;
@@ -110,7 +110,7 @@ function renderHome() {
 
   app.innerHTML = `
     <header class="top">
-      <h1>Alabanza</h1>
+      <h1>Grabación</h1>
       <div class="sub">${esc(fechaBonita(s.date))}${s.name ? ' · ' + esc(s.name) : ''} <span class="ver">v${VERSION}</span></div>
       <button class="icon-btn" data-go="settings" aria-label="Ajustes">${I.gear}</button>
     </header>
@@ -124,12 +124,13 @@ function renderHome() {
     ${SECTIONS.map(sec => `
       <section class="section">
         <div class="section-head">
-          <h2>${sec.label}<span class="count">${s.counts[sec.id]} ${s.counts[sec.id] === 1 ? 'canto' : 'cantos'}</span></h2>
-          <div class="stepper">
+          <h2>${sec.label}${sec.single ? '' : `<span class="count">${s.counts[sec.id]} ${s.counts[sec.id] === 1 ? 'canto' : 'cantos'}</span>`}</h2>
+          ${sec.single ? '' : `<div class="stepper">
             <button data-count="${sec.id}" data-d="-1" aria-label="Quitar un canto de ${sec.label}" ${s.counts[sec.id] <= 1 ? 'disabled' : ''}>−</button>
             <button data-count="${sec.id}" data-d="1" aria-label="Agregar un canto a ${sec.label}" ${s.counts[sec.id] >= MAX_SONGS ? 'disabled' : ''}>+</button>
-          </div>
+          </div>`}
         </div>
+        ${sec.hint ? `<p class="section-hint">${sec.hint}</p>` : ''}
         <div class="spine">
           ${songs.filter(x => x.sectionId === sec.id).map(song => cardHtml(song)).join('')}
         </div>
@@ -194,7 +195,7 @@ function renderRecord() {
         <div class="what">${esc(tgt.label)}</div>
         <div class="time" id="time">0:00</div>
         ${dialHtml('Grabar', I.mic)}
-        <div class="level-hint" id="lvlHint">Toca el botón y empieza a cantar.</div>
+        <div class="level-hint" id="lvlHint">${SECTIONS.find(x => x.id === tgt.sectionId)?.single ? 'Canta todos los cantos seguidos. Si te equivocas, detén y graba otra vez.' : 'Toca el botón y empieza a cantar.'}</div>
         ${existing ? '<p class="muted">La toma anterior se reemplaza solo si guardas la nueva.</p>' : ''}
         <div class="review" id="review"></div>
       </div>
@@ -345,7 +346,7 @@ function playTake(sectionId, n) {
   bg.className = 'modal-bg';
   bg.innerHTML = `
     <div class="modal">
-      <h3>${esc(sec.label)} ${n}</h3>
+      <h3>${esc(sec.single ? sec.label : `${sec.label} ${n}`)}</h3>
       <div id="modalPlayer"></div>
       <div class="row">
         <button class="btn" data-a="close">Cerrar</button>
@@ -365,7 +366,7 @@ function playTake(sectionId, n) {
 
 function startRecord(sectionId, n) {
   const sec = SECTIONS.find(s => s.id === sectionId);
-  state.recordTarget = { sectionId, n, label: `${sec.label} ${n}` };
+  state.recordTarget = { sectionId, n, label: sec.single ? sec.label : `${sec.label} ${n}` };
   go('record');
 }
 

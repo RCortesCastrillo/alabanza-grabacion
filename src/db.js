@@ -3,8 +3,8 @@ import { get, set, del, keys, createStore } from 'idb-keyval';
 const store = createStore('alabanza', 'datos');
 
 export const SECTIONS = [
-  { id: 'entrada', label: 'Entrada', initial: 1 },
-  { id: 'gozo', label: 'Gozo', initial: 5 },
+  { id: 'entrada', label: 'Inicio', initial: 1 },
+  { id: 'gozo', label: 'Alabanza', initial: 1, single: true, hint: 'Todos los cantos de alabanza seguidos, en una sola grabación, para que el ritmo no cambie entre uno y otro.' },
   { id: 'adoracion', label: 'Adoración', initial: 1 }
 ];
 export const MAX_SONGS = 20;
@@ -28,7 +28,10 @@ export function defaultSession() {
 
 export async function loadSession() {
   const s = await get('session', store);
-  return { ...defaultSession(), ...(s || {}) };
+  const session = { ...defaultSession(), ...(s || {}) };
+  // Las secciones de una sola grabación siempre tienen 1.
+  for (const sec of SECTIONS) if (sec.single) session.counts[sec.id] = 1;
+  return session;
 }
 export function saveSession(session) {
   return set('session', session, store);
