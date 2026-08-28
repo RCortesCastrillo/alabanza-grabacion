@@ -340,3 +340,5 @@ audio { width: 100%; margin: 8px 0; }
 .player .ptrack { height: 14px; background: var(--paper-2); border-radius: 7px; overflow: hidden; cursor: pointer; }
 .player .ptrack > i { display: block; height: 100%; width: 0; background: var(--wood); }
 .player .ptime { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); }
+
+.player-loading { color: var(--ink-2); font-size: 16px; padding: 14px 0; }

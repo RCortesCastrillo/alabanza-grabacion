@@ -1,131 +1,82 @@
-// Reproductor propio para las tomas crudas de MediaRecorder.
-// Los blobs de MediaRecorder no traen duración en la cabecera y el <audio> nativo
-// se queda mudo en el primer "play" en varios celulares. Aquí se decodifica la toma
-// y se toca con Web Audio, que es fiable en iOS y Android.
-
-let ctx = null;
-let current = null; // reproductor activo, para que solo suene uno a la vez
-
-function getCtx() {
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!ctx || ctx.state === 'closed') ctx = new AC();
-  return ctx;
-}
-
-async function decode(blob) {
-  const c = getCtx();
-  const ab = await blob.arrayBuffer();
-  return new Promise((res, rej) => {
-    const p = c.decodeAudioData(ab, res, rej);
-    if (p && p.then) p.then(res, rej);
-  });
-}
+// Reproductor para las tomas crudas de MediaRecorder.
+//
+// Los blobs de MediaRecorder no traen duración en la cabecera: en iPhone el <audio>
+// se queda mudo al primer "play" y no deja adelantar. Y reproducir con Web Audio
+// se silencia con el interruptor lateral del iPhone. Solución: decodificar la toma,
+// escribirla como WAV (cabecera completa) y dársela al <audio> del sistema.
 
 const fmt = s => {
   s = Math.max(0, Math.round(s || 0));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-const ICON_PLAY = '<svg class="ic fill" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg>';
-const ICON_PAUSE = '<svg class="ic fill" viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1"/><rect x="14" y="4" width="5" height="16" rx="1"/></svg>';
+async function decode(blob) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const c = new AC();
+  try {
+    const ab = await blob.arrayBuffer();
+    return await new Promise((res, rej) => {
+      const p = c.decodeAudioData(ab, res, rej);
+      if (p && p.then) p.then(res, rej);
+    });
+  } finally {
+    c.close().catch(() => {});
+  }
+}
+
+function toWav(buffer) {
+  const ch = buffer.numberOfChannels, n = buffer.length, sr = buffer.sampleRate;
+  const mono = new Float32Array(n);
+  for (let c = 0; c < ch; c++) {
+    const d = buffer.getChannelData(c);
+    for (let i = 0; i < n; i++) mono[i] += d[i] / ch;
+  }
+  const out = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(out);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+  str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (let i = 0; i < n; i++, o += 2) {
+    const s = Math.max(-1, Math.min(1, mono[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([out], { type: 'audio/wav' });
+}
+
+// Caché: la misma toma no se decodifica dos veces.
+const wavCache = new WeakMap();
+async function wavUrlFor(blob) {
+  if (wavCache.has(blob)) return wavCache.get(blob);
+  const buffer = await decode(blob);
+  const url = URL.createObjectURL(toWav(buffer));
+  wavCache.set(blob, url);
+  return url;
+}
 
 export function mountPlayer(container, blob, { autoplay = false } = {}) {
-  container.innerHTML = `
-    <div class="player">
-      <button class="pbtn" aria-label="Escuchar">${ICON_PLAY}</button>
-      <div class="ptrack" role="progressbar"><i></i></div>
-      <div class="ptime">0:00 / --:--</div>
-    </div>`;
-  const btn = container.querySelector('.pbtn');
-  const bar = container.querySelector('.ptrack > i');
-  const track = container.querySelector('.ptrack');
-  const time = container.querySelector('.ptime');
+  container.innerHTML = `<div class="player-loading">Preparando el audio…</div>`;
+  let audio = null, dead = false;
 
-  let buffer = null, source = null, startAt = 0, offset = 0, playing = false, raf = 0, dead = false;
-
-  const draw = () => {
-    if (!buffer) return;
-    const pos = playing ? Math.min(buffer.duration, offset + getCtx().currentTime - startAt) : offset;
-    bar.style.width = `${(pos / buffer.duration) * 100}%`;
-    time.textContent = `${fmt(pos)} / ${fmt(buffer.duration)}`;
-    if (playing) raf = requestAnimationFrame(draw);
-  };
-
-  const stopSource = () => {
-    if (source) { source.onended = null; try { source.stop(); } catch { /* ya parado */ } source = null; }
-    cancelAnimationFrame(raf);
-  };
-
-  const pause = () => {
-    if (!playing) return;
-    offset = Math.min(buffer.duration, offset + getCtx().currentTime - startAt);
-    stopSource();
-    playing = false;
-    btn.innerHTML = ICON_PLAY;
-    draw();
-  };
-
-  const play = async () => {
-    if (dead) return;
-    const c = getCtx();
-    if (c.state === 'suspended') await c.resume();
-    if (!buffer) {
-      btn.disabled = true; time.textContent = 'Cargando…';
-      try { buffer = await decode(blob); }
-      catch (err) {
-        console.warn('[reproductor] decode falló, usando <audio>', err);
-        btn.disabled = false;
-        fallbackToNative();
-        return;
-      }
-      finally { btn.disabled = false; }
-      if (dead) return;
+  (async () => {
+    let url, note = '';
+    try {
+      url = await wavUrlFor(blob);
+    } catch (err) {
+      console.warn('[reproductor] no se pudo decodificar, se usa el archivo crudo', err);
+      url = URL.createObjectURL(blob);
+      note = '<p class="muted">Si no suena a la primera, pausa y vuelve a darle play.</p>';
     }
-    if (current && current !== api) current.pause();
-    current = api;
-    if (offset >= buffer.duration - 0.05) offset = 0;
-    source = c.createBufferSource();
-    source.buffer = buffer;
-    source.connect(c.destination);
-    source.onended = () => { if (playing) { playing = false; offset = buffer.duration; btn.innerHTML = ICON_PLAY; draw(); } };
-    startAt = c.currentTime;
-    source.start(0, offset);
-    playing = true;
-    btn.innerHTML = ICON_PAUSE;
-    draw();
-  };
+    if (dead) return;
+    container.innerHTML = `<audio controls playsinline preload="auto" src="${url}" style="width:100%"></audio>${note}`;
+    audio = container.querySelector('audio');
+    if (autoplay) audio.play().catch(() => {});
+  })();
 
-  btn.onclick = () => (playing ? pause() : play());
-  track.onclick = e => {
-    if (!buffer) return;
-    const r = track.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-    const was = playing;
-    if (was) pause();
-    offset = frac * buffer.duration;
-    if (was) play(); else draw();
+  return {
+    pause() { audio?.pause(); },
+    destroy() { dead = true; audio?.pause(); audio = null; container.innerHTML = ''; }
   };
-
-  // Plan B: <audio> nativo con el truco para que calcule la duración de blobs sin cabecera.
-  function fallbackToNative() {
-    const url = URL.createObjectURL(blob);
-    container.innerHTML = `<audio controls preload="auto" src="${url}" style="width:100%"></audio>`;
-    const a = container.querySelector('audio');
-    a.addEventListener('loadedmetadata', () => {
-      if (a.duration === Infinity) {
-        a.currentTime = 1e101;
-        a.addEventListener('timeupdate', function once() { a.removeEventListener('timeupdate', once); a.currentTime = 0; });
-      }
-    });
-    a.play().catch(() => {});
-    api.pause = () => a.pause();
-    api.destroy = () => { a.pause(); URL.revokeObjectURL(url); };
-  }
-
-  const api = {
-    pause,
-    destroy() { dead = true; pause(); buffer = null; if (current === api) current = null; }
-  };
-  if (autoplay) play();
-  return api;
 }
