@@ -6,6 +6,7 @@ import {
 } from './db.js';
 import { Recorder, isSupported } from './audio/recorder.js';
 import { exportMp3 } from './audio/exporter.js';
+import { mountPlayer } from './audio/player.js';
 
 registerSW({ immediate: true });
 
@@ -164,7 +165,7 @@ function cardHtml(song) {
 // ---------- Grabación ----------
 let rec = null;
 let recResult = null;
-let playUrl = null;
+let activePlayer = null;
 
 function dialHtml(mainLabel, mainIcon, mainClass = '') {
   const r = 120, c = 2 * Math.PI * r;
@@ -291,22 +292,21 @@ function bindDial({ onSaved, test = false, maxSeconds = 0, label = '' }) {
     requestAnimationFrame(() => { lvl.style.transition = ''; });
     btn.classList.remove('stop');
     btn.innerHTML = `${I.redo}<span>Otra vez</span>`;
-    btn.onclick = () => { review.innerHTML = ''; hint.textContent = ''; start(); };
+    btn.onclick = () => { if (activePlayer) { activePlayer.destroy(); activePlayer = null; } review.innerHTML = ''; hint.textContent = ''; start(); };
     hint.textContent = '';
     hint.classList.remove('low');
 
-    if (playUrl) URL.revokeObjectURL(playUrl);
-    playUrl = URL.createObjectURL(result.blob);
     const tooShort = result.duration < 1 || result.blob.size < 1000;
 
     review.innerHTML = `
       ${result.interrupted ? `<div class="notice warn">La grabación se interrumpió (llamada, pantalla bloqueada u otra app). Se guardó lo que alcanzó a grabarse: escúchalo y decide.</div>` : ''}
       ${tooShort ? `<div class="notice err">La toma quedó vacía. Vuelve a intentarlo.</div>` : ''}
-      <audio controls src="${playUrl}" preload="metadata"></audio>
+      <div id="takePlayer"></div>
       ${test ? '' : `
         <div class="row">
           <button class="btn primary big" id="keep" ${tooShort ? 'disabled' : ''}>Se queda</button>
         </div>`}`;
+    if (!tooShort) activePlayer = mountPlayer(document.getElementById('takePlayer'), result.blob);
     if (!test) {
       document.getElementById('keep').onclick = async () => {
         await onSaved(result);
@@ -340,14 +340,12 @@ function playTake(sectionId, n) {
   const take = state.takes[takeKey(sectionId, n)];
   if (!take) return;
   const sec = SECTIONS.find(s => s.id === sectionId);
-  if (playUrl) URL.revokeObjectURL(playUrl);
-  playUrl = URL.createObjectURL(take.blob);
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `
     <div class="modal">
       <h3>${esc(sec.label)} ${n}</h3>
-      <audio controls autoplay src="${playUrl}"></audio>
+      <div id="modalPlayer"></div>
       <div class="row">
         <button class="btn" data-a="close">Cerrar</button>
         <button class="btn" data-a="rerec">${I.redo} Regrabar</button>
@@ -356,11 +354,12 @@ function playTake(sectionId, n) {
   bg.addEventListener('click', e => {
     const a = e.target.closest('[data-a]')?.dataset.a;
     if (!a && e.target !== bg) return;
-    bg.querySelector('audio').pause();
+    player.destroy();
     bg.remove();
     if (a === 'rerec') startRecord(sectionId, n);
   });
   document.body.appendChild(bg);
+  const player = mountPlayer(bg.querySelector('#modalPlayer'), take.blob, { autoplay: true });
 }
 
 function startRecord(sectionId, n) {
@@ -500,7 +499,7 @@ function showExportResult() {
   body.innerHTML = `
     <div class="notice ok">Listo. <strong>${esc(r.name)}</strong> <span class="size">(${mb} MB)</span></div>
     <p>Escúchalo antes de mandarlo para revisar que las uniones quedaron limpias:</p>
-    <audio controls src="${r.url}" preload="metadata"></audio>
+    <audio controls src="${r.url}" preload="auto"></audio>
     <div style="margin-top:16px">
       ${canShare
         ? `<button class="btn primary big block" id="share">Mandar por WhatsApp</button>
@@ -533,6 +532,7 @@ function showExportResult() {
 // ---------- Navegación y eventos ----------
 function go(view) {
   if (rec) rec.stop(false);
+  if (activePlayer) { activePlayer.destroy(); activePlayer = null; }
   state.view = view;
   render();
 }

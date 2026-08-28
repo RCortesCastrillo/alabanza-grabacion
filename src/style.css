@@ -322,3 +322,20 @@ audio { width: 100%; margin: 8px 0; }
   padding: 12px 18px; border-radius: 12px; font-size: 16px;
   max-width: 90vw; text-align: center;
 }
+
+/* ---------- Reproductor propio ---------- */
+.player {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center;
+  background: #fff; border: 2px solid var(--line); border-radius: var(--radius);
+  padding: 10px 14px; margin: 10px 0; text-align: left;
+}
+.player .pbtn {
+  grid-row: 1 / 3; width: 60px; height: 60px; border-radius: 50%;
+  border: none; background: var(--ink); color: var(--paper);
+  display: flex; align-items: center; justify-content: center;
+}
+.player .pbtn:disabled { opacity: .5; }
+.player .pbtn svg.ic { width: 30px; height: 30px; }
+.player .ptrack { height: 14px; background: var(--paper-2); border-radius: 7px; overflow: hidden; cursor: pointer; }
+.player .ptrack > i { display: block; height: 100%; width: 0; background: var(--wood); }
+.player .ptime { font-family: var(--font-mono); font-size: 16px; color: var(--ink-2); }
