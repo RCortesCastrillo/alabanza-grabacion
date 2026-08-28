@@ -20,7 +20,7 @@ const state = {
 };
 
 const app = document.getElementById('app');
-const VERSION = '1.8';
+const VERSION = '1.9';
 const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
 // ---------- Utilidades ----------
@@ -382,7 +382,7 @@ function renderSettings() {
       <div class="field">
         <label for="fName">Tu nombre</label>
         <input id="fName" type="text" value="${esc(s.name)}" placeholder="Por ejemplo: Juan" autocomplete="off" />
-        <div class="help">Va en el nombre del archivo para que el pastor sepa de quién es.</div>
+        <div class="help">Va en el nombre del archivo para que se sepa de quién es.</div>
       </div>
       <div class="field">
         <label for="fDate">Domingo</label>
@@ -505,9 +505,9 @@ function showExportResult() {
     <div style="margin-top:16px">
       ${canShare
         ? `<button class="btn primary big block" id="share">Mandar por WhatsApp</button>
-           <p class="hint muted" style="text-align:center">Se abre el menú de compartir; ahí eliges WhatsApp y al pastor.</p>`
+           <p class="hint muted" style="text-align:center">Se abre el menú de compartir; ahí eliges WhatsApp y a quién mandarlo.</p>`
         : `<a class="btn primary big block" id="dl" href="${r.url}" download="${esc(r.name)}">Guardar el archivo</a>
-           <div class="notice tip">Este navegador no puede mandar el archivo directo. Guárdalo, luego abre WhatsApp, entra al chat del pastor, toca el clip 📎 y elige el archivo <strong>${esc(r.name)}</strong> de tus descargas.</div>`}
+           <div class="notice tip">Este navegador no puede mandar el archivo directo. Guárdalo, luego abre WhatsApp, entra al chat donde lo vas a mandar, toca el clip 📎 y elige el archivo <strong>${esc(r.name)}</strong> de tus descargas.</div>`}
       <button class="btn ghost block" id="dlAlt" style="margin-top:10px">${canShare ? 'O guardar el archivo en el celular' : 'Volver a crear el audio'}</button>
     </div>`;
   if (canShare) {
